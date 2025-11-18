@@ -21,5 +21,6 @@ Thumbs.db
 # Logs
 *.log
 
-#arquivo .csv muito grande
+#arquivos muito grandes
 backend/embeddings_index/metadata.csv
+backend/embeddings_index/embeddings.npy
