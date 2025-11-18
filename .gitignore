@@ -22,4 +22,4 @@ Thumbs.db
 *.log
 
 #arquivo .csv muito grande
-app/embeddings_index/metadata.csv
+backend/embeddings_index/metadata.csv
