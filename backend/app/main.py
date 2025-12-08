@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-from model_utils import RecipeRecommender
+from .model_utils import RecipeRecommender
 
 # -----------------------------------------------------------------------------
 # Configuração básica de logging
