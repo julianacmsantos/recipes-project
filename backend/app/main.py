@@ -1,4 +1,11 @@
 # backend/app/main.py
+#
+# Camada de API da aplicação.
+# Responsável por:
+# - inicializar o FastAPI
+# - configurar CORS e logging
+# - carregar o motor de recomendação na inicialização
+# - expor os endpoints /health e /recommend
 
 import logging
 import os
@@ -13,19 +20,22 @@ from model_utils import RecipeRecommender
 
 # -----------------------------------------------------------------------------
 # Configuração básica de logging
+# Define o formato e o nível de log
 # -----------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
+# Log específico para a API
 logger = logging.getLogger("recipes-api")
 
 # -----------------------------------------------------------------------------
-# Carrega variáveis de ambiente
+# Carrega variáveis de ambiente e caminhos de arquivos
 # -----------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # .env ficará na raiz do backend (ex: backend/.env) ou no projeto
+# Permite configurar caminhos e origens sem alterar o código
 load_dotenv(os.path.join(BASE_DIR, "..", ".env"))
 
 DEFAULT_INDEX_PATH = os.path.join(BASE_DIR, "..", "embeddings_index", "faiss_index.index")
@@ -48,7 +58,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS – necessário para o frontend (React/Vite)
+# CORS – necessário para o frontend (React) acessar a API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in FRONTEND_ORIGINS if origin.strip()],
@@ -62,14 +72,29 @@ recommender: Optional[RecipeRecommender] = None
 
 
 # -----------------------------------------------------------------------------
-# Schemas Pydantic
+# Schemas Pydantic (modelos de entrada/saída da API)
 # -----------------------------------------------------------------------------
 class Query(BaseModel):
+    """
+    Modelo de requisição para o endpoint /recommend.
+
+    Exemplo de JSON recebido:
+    {
+      "ingredients": "tomato garlic olive oil",
+      "top_k": 10
+    }
+    """
     ingredients: str = Field(..., description="Lista de ingredientes em texto livre.")
     top_k: int = Field(10, ge=1, le=50, description="Quantidade máxima de receitas retornadas.")
 
 
 class Recipe(BaseModel):
+    """
+    Representa uma receita individual retornada pela recomendação.
+
+    Os campos devem refletir as colunas presentes em metadata.csv,
+    além dos campos calculados similarity_score e match_percent.
+    """
     id: int
     title: str
     ingredients: str
@@ -81,6 +106,15 @@ class Recipe(BaseModel):
 
 
 class RecommendResponse(BaseModel):
+    """
+    Modelo de resposta do endpoint /recommend.
+
+    Exemplo de JSON:
+    {
+      "query": "tomato garlic olive oil",
+      "results": [ { ...Recipe... }, ... ]
+    }
+    """
     query: str
     results: List[Recipe]
 
@@ -92,13 +126,19 @@ class RecommendResponse(BaseModel):
 def startup_event() -> None:
     """
     Carrega o sistema de recomendação na inicialização da API.
+
+    Responsável por:
+    - carregar a metadata das receitas
+    - carregar o modelo de embeddings
+    - carregar o índice FAISS
+
     Isso evita carregar o modelo/índice durante o import do módulo.
     """
     global recommender
 
     logger.info("Iniciando carregamento do sistema de recomendação...")
     try:
-        recommender = RecipeRecommender(INDEX_PATH, META_PATH)
+        recommender = RecipeRecommender(INDEX_PATH, META_PATH) #
         logger.info("Sistema carregado e pronto para uso!")
     except Exception as exc:
         logger.exception("Falha ao inicializar o RecipeRecommender: %s", exc)
@@ -144,6 +184,7 @@ def recommend(q: Query):
     try:
         results = recommender.recommend(user_text, top_k=q.top_k)
         logger.info("Retornando %d resultados para o usuário.", len(results))
+        # Pydantic cuida da conversão destes dados para JSON
         return RecommendResponse(query=user_text, results=results)
     except Exception as exc:
         logger.exception("Erro ao processar recomendação: %s", exc)
