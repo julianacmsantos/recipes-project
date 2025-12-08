@@ -1,39 +1,63 @@
 # backend/app/model_utils.py
 
-from sentence_transformers import SentenceTransformer
+import logging
+
 import faiss
 import numpy as np
 import pandas as pd
-import os
+from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger("recipes-api.recommender")
+
 
 class RecipeRecommender:
-    def __init__(self, index_path, meta_path, model_name='sentence-transformers/all-MiniLM-L6-v2'):
-        print("🔄 Carregando metadata das receitas...")
+    """
+    Wrapper simples responsável por:
+      - carregar metadata das receitas;
+      - carregar o modelo de embeddings;
+      - carregar o índice FAISS;
+      - expor um método de recomendação.
+    """
+
+    def __init__(
+        self,
+        index_path: str,
+        meta_path: str,
+        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    ) -> None:
+        logger.info("Carregando metadata das receitas de '%s'...", meta_path)
         self.meta = pd.read_csv(meta_path)
-        print(f"📄 Metadata carregada com {len(self.meta)} receitas.")
+        logger.info("Metadata carregada com %d receitas.", len(self.meta))
 
-        print("🧠 Carregando modelo de embeddings...")
+        logger.info("Carregando modelo de embeddings '%s'...", model_name)
         self.model = SentenceTransformer(model_name)
-        print("✨ Modelo carregado: ok.")
+        logger.info("Modelo de embeddings carregado com sucesso.")
 
-        print("📦 Lendo índice FAISS do disco...")
+        logger.info("Lendo índice FAISS do caminho '%s'...", index_path)
         self.index = faiss.read_index(index_path)
         self.dim = self.index.d
-        print(f"📚 Índice carregado com {self.index.ntotal} vetores embeddados.")
+        logger.info("Índice FAISS carregado com %d vetores (dim=%d).", self.index.ntotal, self.dim)
 
-        print("🚀 Recommender inicializado com sucesso.\n")
+        logger.info("RecipeRecommender inicializado com sucesso.\n")
 
-    def embed_text(self, text):
-        print("📝 Gerando embedding da consulta do usuário...")
+    def embed_text(self, text: str) -> np.ndarray:
+        """
+        Gera o embedding normalizado (L2) para o texto informado.
+        """
+        logger.debug("Gerando embedding para o texto do usuário.")
         emb = self.model.encode([text], convert_to_numpy=True)
-        emb = emb.astype('float32')
+        emb = emb.astype("float32")
         faiss.normalize_L2(emb)
         return emb
 
-    def recommend(self, user_input, top_k=10):
+    def recommend(self, user_input: str, top_k: int = 10):
+        """
+        Retorna uma lista de receitas mais similares ao texto de entrada.
+        Cada item é um dicionário com os campos da metadata + scores.
+        """
         emb = self.embed_text(user_input)
 
-        print(f"🔍 Buscando resultados mais parecidos (top {top_k})...")
+        logger.info("Buscando os %d resultados mais similares no índice FAISS...", top_k)
         D, I = self.index.search(emb, top_k)
 
         results = []
@@ -51,5 +75,5 @@ class RecipeRecommender:
 
             results.append(row)
 
-        print("✅ Busca finalizada.\n")
+        logger.info("Busca finalizada com %d resultados.\n", len(results))
         return results
