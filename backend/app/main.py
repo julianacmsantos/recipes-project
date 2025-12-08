@@ -81,11 +81,11 @@ class Query(BaseModel):
     Exemplo de JSON recebido:
     {
       "ingredients": "tomato garlic olive oil",
-      "top_k": 10
+      "top_k": 5
     }
     """
     ingredients: str = Field(..., description="Lista de ingredientes em texto livre.")
-    top_k: int = Field(10, ge=1, le=50, description="Quantidade máxima de receitas retornadas.")
+    top_k: int = Field(5, ge=1, le=50, description="Quantidade máxima de receitas retornadas.")
 
 
 class Recipe(BaseModel):
@@ -117,6 +117,7 @@ class RecommendResponse(BaseModel):
     """
     query: str
     results: List[Recipe]
+    message: Optional[str] = Field(None, description="Nenhuma receita encontrada.")
 
 
 # -----------------------------------------------------------------------------
@@ -182,10 +183,23 @@ def recommend(q: Query):
         )
 
     try:
-        results = recommender.recommend(user_text, top_k=q.top_k)
+        results = recommender.recommend(
+            user_input=user_text,
+            top_k=q.top_k,
+            require_exact_token=True
+        )
+        
+        if not results:
+            logger.info("Nenhuma receita encontrada para a consulta do usuário.")
+            return RecommendResponse(
+                query=user_text,results=[],
+                message="Nenhuma receita encontrada para os ingredientes fornecidos."
+            )
+
         logger.info("Retornando %d resultados para o usuário.", len(results))
-        # Pydantic cuida da conversão destes dados para JSON
+
         return RecommendResponse(query=user_text, results=results)
+
     except Exception as exc:
         logger.exception("Erro ao processar recomendação: %s", exc)
         raise HTTPException(

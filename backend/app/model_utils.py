@@ -13,6 +13,7 @@ import faiss
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
+import re
 
 # Logger específico para este módulo
 logger = logging.getLogger("recipes-api.recommender")
@@ -68,7 +69,7 @@ class RecipeRecommender:
         faiss.normalize_L2(emb)
         return emb
 
-    def recommend(self, user_input: str, top_k: int = 10):
+    def recommend(self, user_input, top_k=5, require_exact_token: bool = False):
         """
         Retorna uma lista de receitas mais similares ao texto de entrada.
         Cada item é um dicionário com os campos da metadata + scores.
@@ -103,5 +104,44 @@ class RecipeRecommender:
 
             results.append(row)
 
-        logger.info("Busca finalizada com %d resultados.\n", len(results))
+        logger.info("Busca vetorial finalizada")
+
+        if require_exact_token:
+            results = self._filter_by_exact_token(user_input, results)
+            logger.info("Após filtragem por token exato, %d resultados permanecem.", len(results))
+        else:
+            logger.info("Filtro por palavra exata desabilitado.")
+
         return results
+    
+    def _tokenize(self, text: str):
+        """
+        Tokeniza o texto de entrada em palavras individuais em minúsculas
+        """
+        if not isinstance(text, str):
+            return set()
+        tokens = re.findall(r"\w+", text.lower())
+        return set(tokens)
+    
+    def _filter_by_exact_token(self, user_input: str, results):
+        """
+        Filtra a lista de resultados mantendo apenas aqueles em que
+        pelo menos uma das palavras digitadas pelo usuário aparece
+        exatamente (como token) em 'ingredients' ou 'ner' da receita.
+        """
+        user_tokens = self._tokenize(user_input)
+        if not user_tokens:
+            return []
+        
+        filtered = []
+        for row in results:
+            ingredients_text = str(row.get("ingredients", "")).lower()
+            ner_text = str(row.get("ner", "")).lower()
+
+            recipe_tokens = self._tokenize(ingredients_text + " " + ner_text)
+
+            # Interseção entre palavras do usuário e palavras da receita
+            if user_tokens & recipe_tokens:
+                filtered.append(row)
+
+        return filtered
